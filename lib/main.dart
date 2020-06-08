@@ -31,7 +31,7 @@ Query getNotificationQuery() {
 }
 
 void backgroundFetchHeadlessTask(String taskId) async {
-  print('[Background Fetch] Headless event received.');
+  print('[Flutter] [Background Fetch] Headless event received.');
 
   final flutterLocalNotificationsPlugin =
       await initializeFlutterLocationNotificationsPlugin();
@@ -112,11 +112,11 @@ class _MyAppState extends State<MyApp> {
         requiresDeviceIdle: false,
         requiredNetworkType: NetworkType.NONE,
       ),
-      (taskId) => print("[BackgroundFetch.15] is called $taskId"),
+      (taskId) => print("[Flutter] [BackgroundFetch.15] is called $taskId"),
     ).then((int status) {
-      print('[BackgroundFetch] configure success: $status');
+      print('[Flutter] [BackgroundFetch] configure success: $status');
     }).catchError((e) {
-      print('[BackgroundFetch] configure ERROR: $e');
+      print('[Flutter ][BackgroundFetch] configure ERROR: $e');
     });
   }
 

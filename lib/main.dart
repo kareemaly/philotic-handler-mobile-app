@@ -1,24 +1,72 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:background_fetch/background_fetch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:philotic/providers/set_reminder_action_handler.dart';
-import 'package:philotic/views/action_list_view.dart';
+import 'package:philotic/handlers/set_reminder_action_handler.dart';
+import 'package:philotic/constants/actions.dart';
 
-void main() async {
+Future<FlutterLocalNotificationsPlugin>
+    initializeFlutterLocationNotificationsPlugin() async {
   FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
-  var initializationSettingsAndroid = AndroidInitializationSettings('ic_launcher');
+  var initializationSettingsAndroid =
+      AndroidInitializationSettings('ic_launcher');
   var initializationSettingsIOS = IOSInitializationSettings(
     onDidReceiveLocalNotification: onDidReceiveLocalNotification,
   );
   var initializationSettings = InitializationSettings(
       initializationSettingsAndroid, initializationSettingsIOS);
-  runApp(MyApp(
-    flutterLocalNotificationsPlugin: flutterLocalNotificationsPlugin,
-  ));
   await flutterLocalNotificationsPlugin.initialize(
     initializationSettings,
     onSelectNotification: selectNotification,
   );
+  return flutterLocalNotificationsPlugin;
+}
+
+Query getNotificationQuery() {
+  return Firestore.instance
+      .collection('actions')
+      .where("action", isEqualTo: ADD_NOTIFICATION_ON_MY_MOBILE)
+      .where("handled", isEqualTo: false);
+}
+
+void backgroundFetchHeadlessTask(String taskId) async {
+  print('[Background Fetch] Headless event received.');
+
+  final flutterLocalNotificationsPlugin =
+      await initializeFlutterLocationNotificationsPlugin();
+  final data = await getNotificationQuery().getDocuments();
+
+  final futures = data.documents
+      .map(
+        (doc) => setReminderActionHandler(
+          flutterLocalNotificationsPlugin,
+          doc,
+        ),
+      )
+      .toList();
+
+  await Future.wait(futures);
+
+  BackgroundFetch.finish(taskId);
+}
+
+void main() async {
+  runApp(MyApp());
+  final flutterLocalNotificationsPlugin =
+      await initializeFlutterLocationNotificationsPlugin();
+
+  // Listen for any actions and pass it to be handled
+  getNotificationQuery().snapshots().listen((data) {
+    data.documents.forEach(
+      (doc) => setReminderActionHandler(
+        flutterLocalNotificationsPlugin,
+        doc,
+      ),
+    );
+  });
+
+  BackgroundFetch.registerHeadlessTask(backgroundFetchHeadlessTask);
 }
 
 Future selectNotification(String payload) async {
@@ -38,13 +86,39 @@ Future onDidReceiveLocalNotification(
   }
 }
 
-class MyApp extends StatelessWidget {
-  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin;
+class MyApp extends StatefulWidget {
+  @override
+  _MyAppState createState() => _MyAppState();
+}
 
-  const MyApp({
-    Key key,
-    @required this.flutterLocalNotificationsPlugin,
-  }) : super(key: key);
+class _MyAppState extends State<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+    initPlatformState();
+  }
+
+  Future<void> initPlatformState() async {
+    BackgroundFetch.configure(
+      BackgroundFetchConfig(
+        minimumFetchInterval: 15,
+        forceAlarmManager: false,
+        stopOnTerminate: false,
+        startOnBoot: true,
+        enableHeadless: true,
+        requiresBatteryNotLow: false,
+        requiresCharging: false,
+        requiresStorageNotLow: false,
+        requiresDeviceIdle: false,
+        requiredNetworkType: NetworkType.NONE,
+      ),
+      (taskId) => print("[BackgroundFetch.15] is called $taskId"),
+    ).then((int status) {
+      print('[BackgroundFetch] configure success: $status');
+    }).catchError((e) {
+      print('[BackgroundFetch] configure ERROR: $e');
+    });
+  }
 
   // This widget is the root of your application.
   @override
@@ -68,10 +142,7 @@ class MyApp extends StatelessWidget {
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       home: Scaffold(
-        body: SetReminderActionHandler(
-          flutterLocalNotificationsPlugin: flutterLocalNotificationsPlugin,
-          child: ActionListView(),
-        ),
+        body: Text("Philotic Mobile App Handler"),
       ),
     );
   }
